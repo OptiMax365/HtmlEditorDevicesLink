@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<meta name="theme-color" content="#0b0f17" />
+<title>HTML Auto Editor - Clean</title>
+<link rel="manifest" href='data:application/manifest+json,{"name":"HTML Auto Editor","short_name":"HTML Editor","start_url":".","display":"standalone","background_color":"#0a0e1a","theme_color":"#0b0f17","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%3C/text%3E%3C/svg%3E","sizes":"192x192","type":"image/svg+xml"}]}' />
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0e1a; --panel:#111827; --panel2:#1a2332; --panel3:#243044;
+    --accent:#00e5a8; --accent2:#7c5cff; --accent3:#f472b6;
+    --danger:#ef4444; --text:#f1f5f9; --muted:#94a3b8; --ok:#22c55e;
+    --warning:#f59e0b; --info:#3b82f6;
+    --shadow:0 4px 24px rgba(0,0,0,0.4);
+    --glow:0 0 20px rgba(0,229,168,0.3);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:radial-gradient(ellipse at top,#1a2332 0%,#0a0e1a 50%);
+    color:var(--text);min-height:100vh;overflow-x:hidden;
+  }
+  header{
+    padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.05);
+    display:flex;align-items:center;gap:12px;position:sticky;top:0;
+    background:rgba(10,14,26,0.95);backdrop-filter:blur(20px);z-index:100;
+    box-shadow:0 2px 20px rgba(0,0,0,0.3);
+  }
+  .logo{
+    font-size:20px;font-weight:800;letter-spacing:-0.5px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text;flex:1;
+  }
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--danger);box-shadow:0 0 10px var(--danger);transition:all 0.3s}
+  .dot.ok{background:var(--ok);box-shadow:0 0 15px var(--ok);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+  main{max-width:1400px;margin:0 auto;padding:20px;display:flex;flex-wrap:wrap;gap:20px;justify-content:center;}
+  .editor-panel, .preview-panel {
+    flex: 1; min-width: 300px; background:linear-gradient(135deg,var(--panel) 0%,var(--panel2) 100%);
+    border:1px solid rgba(255,255,255,0.08);border-radius:20px;
+    padding:24px;box-shadow:var(--shadow);
+    backdrop-filter:blur(10px);
+  }
+  .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .panel-title { font-size:18px;font-weight:700; }
+  #codeEditor {
+    width: 100%; height: 600px; font-family: 'SF Mono', Monaco, monospace;
+    background: var(--panel3); color: var(--text); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px; padding: 16px; resize: vertical;
+    outline: none; font-size: 14px;
+  }
+  #codeEditor:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,229,168,0.1); }
+  #livePreview { width: 100%; height: 600px; border: none; border-radius: 12px; background: white; }
+  .send-to-phone-btn {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: white; border: none; padding: 10px 16px; border-radius: 12px;
+    font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    transition: all 0.2s; box-shadow: 0 4px 16px rgba(0,229,168,0.3);
+  }
+  .send-to-phone-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(0,229,168,0.4); }
+  .send-to-phone-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* Connection Setup Card */
+  .card{
+    background:linear-gradient(135deg,var(--panel) 0%,var(--panel2) 100%);
+    border:1px solid rgba(255,255,255,0.08);border-radius:20px;
+    padding:24px;margin-bottom:20px;box-shadow:var(--shadow);
+    backdrop-filter:blur(10px); width: 100%;
+  }
+  .card h2{font-size:18px;margin:0 0 20px;font-weight:700;display:flex;align-items:center;gap:10px}
+  .status-banner{
+    padding:16px 20px;border-radius:14px;margin-bottom:20px;
+    display:flex;align-items:center;gap:12px;font-weight:600;
+    box-shadow:var(--shadow);animation:slideIn 0.3s ease;
+  }
+  @keyframes slideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+  .status-banner.connected{background:linear-gradient(135deg,#052e16,#064e3b);border:1px solid var(--ok);color:var(--ok)}
+  .status-banner.disconnected{background:linear-gradient(135deg,#450a0a,#7f1d1d);border:1px solid var(--danger);color:var(--danger)}
+  .status-banner.waiting{background:linear-gradient(135deg,#422006,#78350f);border:1px solid var(--warning);color:var(--warning)}
+  .workflow{display:grid;gap:20px;margin:20px 0}
+  .step{
+    background:var(--panel2);border:2px solid rgba(255,255,255,0.08);
+    border-radius:16px;padding:20px;position:relative;transition:all 0.3s;
+  }
+  .step.active{border-color:var(--accent);background:linear-gradient(135deg,var(--panel2),var(--panel3));box-shadow:var(--glow)}
+  .step.completed{border-color:var(--ok);background:linear-gradient(135deg,#052e16,#064e3b)}
+  .step-number{
+    position:absolute;top:-14px;left:20px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#fff;width:32px;height:32px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:14px;box-shadow:0 4px 12px rgba(0,229,168,0.4);
+  }
+  .step.completed .step-number{background:linear-gradient(135deg,var(--ok),#16a34a)}
+  .step-title{font-size:17px;font-weight:700;margin:10px 0 8px}
+  .step-desc{font-size:13.5px;color:var(--muted);line-height:1.6}
+  #qrcode{display:flex;justify-content:center;margin:20px 0;padding:24px;background:#fff;border-radius:16px;min-height:260px;align-items:center;box-shadow:0 8px 32px rgba(0,0,0,0.3)}
+  #qrcode img,#qrcode canvas{max-width:100%!important;height:auto!important;border-radius:8px}
+  .qr-info{text-align:center;padding:16px;background:var(--panel3);border-radius:12px;margin-top:16px}
+  .qr-code-display{font-family:"SF Mono",Monaco,monospace;font-size:22px;font-weight:700;color:var(--accent);letter-spacing:3px}
+  input,select,button,textarea{
+    width:100%;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);
+    background:var(--panel3);color:var(--text);font-size:15px;outline:none;font-family:inherit;
+    transition:all 0.2s;
+  }
+  input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,168,0.1)}
+  button{
+    cursor:pointer;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));
+    border:none;color:#fff;transition:all 0.2s;box-shadow:0 4px 16px rgba(0,229,168,0.3);
+  }
+  button:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(0,229,168,0.4)}
+  button:active{transform:scale(0.97)}
+  button:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+  button.ghost{background:var(--panel3);color:var(--text);border:1px solid rgba(255,255,255,0.1);box-shadow:none}
+  button.ghost:hover{background:var(--panel2);border-color:var(--accent)}
+  button.success{background:linear-gradient(135deg,#22c55e,#16a34a);box-shadow:0 4px 16px rgba(34,197,94,0.3)}
+  button.danger{background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 4px 16px rgba(239,68,68,0.3)}
+
+  .hidden{display:none!important}
+  .pill{
+    display:inline-block;padding:5px 14px;border-radius:999px;
+    background:var(--panel3);border:1px solid rgba(255,255,255,0.1);
+    font-size:12px;color:var(--muted);font-weight:700;
+  }
+  .pill.ok{background:#052e16;border-color:var(--ok);color:var(--ok)}
+  .hint{color:var(--muted);font-size:13px;margin-top:10px;line-height:1.6}
+
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(120px);
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#fff;padding:16px 32px;border-radius:14px;font-weight:700;
+    opacity:0;pointer-events:none;transition:all 0.3s;z-index:1000;
+    box-shadow:0 8px 32px rgba(0,229,168,0.4);font-size:14px;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.error{background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 8px 32px rgba(239,68,68,0.4)}
+
+  @media(max-width:900px){
+    main { flex-direction: column; }
+    .editor-panel, .preview-panel { min-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">HTML AUTO EDITOR</div>
+  <div id="statusDot" class="dot"></div>
+  <span id="statusText" class="pill">offline</span>
+</header>
+
+<main>
+  <!-- CONNECTION SETUP -->
+  <section id="setup" class="card">
+    <h2>🔗 Connect to Phone</h2>
+    
+    <div class="workflow">
+      <div class="step" id="step1">
+        <div class="step-number">1</div>
+        <div class="step-title">💻 Open on Laptop FIRST</div>
+        <div class="step-desc">
+          Keep this page open on your laptop. It will generate a unique QR code for your phone.
+        </div>
+        <button id="startLaptop" class="success" style="margin-top:14px">I'm on my Laptop - Start</button>
+      </div>
+
+      <div class="step hidden" id="step2">
+        <div class="step-number">2</div>
+        <div class="step-title">📱 Scan QR Code with Phone</div>
+        <div class="step-desc">
+          Use your phone's camera to scan the QR code below. This will connect your devices.
+        </div>
+        <div id="qrcode"></div>
+        <div class="qr-info">
+          <div style="color:var(--muted);font-size:12px;margin-bottom:6px">Or enter this code manually:</div>
+          <div class="qr-code-display" id="roomDisplay">---</div>
+        </div>
+        <div class="hint" style="text-align:center;margin-top:14px">
+          Waiting for phone to connect... <span id="waitTimer">0s</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATUS BANNER -->
+  <div id="statusBanner" class="status-banner disconnected hidden">
+    <span id="bannerIcon">❌</span>
+    <span id="bannerText">Not connected</span>
+  </div>
+
+  <!-- MAIN EDITOR UI -->
+  <div id="mainUI" class="hidden" style="width: 100%;">
+    <div class="editor-panel">
+      <div class="panel-header">
+        <div class="panel-title">Code Editor</div>
+        <button id="sendToPhoneBtn" class="send-to-phone-btn" disabled>
+          📱 Send to Phone
+        </button>
+      </div>
+      <textarea id="codeEditor">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;title&gt;My Page&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;Hello, World!&lt;/h1&gt;
+  &lt;p&gt;Edit me and click 'Send to Phone'.&lt;/p&gt;
+&lt;/body&gt;
+&lt;/html&gt;</textarea>
+    </div>
+
+    <div class="preview-panel">
+      <div class="panel-header">
+        <div class="panel-title">Live Preview</div>
+        <div></div> <!-- Spacer -->
+      </div>
+      <iframe id="livePreview" sandbox="allow-same-origin allow-scripts"></iframe>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   HTML Auto Editor with Phone Sync
+   ============================================================ */
+
+let role = null;
+let peer = null;
+let conn = null;
+let roomCode = null;
+let waitInterval = null;
+const $ = id => document.getElementById(id);
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+/* ---------- Initialize ---------- */
+window.addEventListener('DOMContentLoaded', () => {
+  if (isMobile) {
+    // On mobile, we are just a receiver. Hide setup and show a message.
+    $('setup').classList.add('hidden');
+    $('mainUI').classList.remove('hidden');
+    $('mainUI').innerHTML = '<div class="card" style="text-align:center;"><h2>📱 Phone Receiver</h2><p>This device is ready to receive HTML from your laptop.</p><p>Keep this tab open.</p></div>';
+    return;
+  }
+
+  // On laptop, set up the editor and connection flow.
+  setupEditor();
+  
+  const urlParams = new URLSearchParams(window.location.search);
+  const qrRoom = urlParams.get('room');
+  if(qrRoom){
+    // If someone somehow lands here with a room param on laptop, ignore it.
+    // The laptop is always the host.
+    history.replaceState(null, '', window.location.pathname);
+  }
+});
+
+function setupEditor() {
+  const editor = $('codeEditor');
+  const preview = $('livePreview');
+
+  const updatePreview = () => {
+    const content = editor.value;
+    const blob = new Blob([content], {type: 'text/html'});
+    preview.src = URL.createObjectURL(blob);
+  };
+
+  editor.addEventListener('input', updatePreview);
+  updatePreview(); // Initial load
+
+  $('sendToPhoneBtn').onclick = () => {
+    if (!conn || !conn.open) {
+      showToast('Not connected to phone!', true);
+      return;
+    }
+    const payload = {
+      type: 'html_content',
+      content: editor.value,
+      t: Date.now()
+    };
+    conn.send(payload);
+    showToast('HTML sent to phone!');
+    beep(880, 40);
+  };
+}
+
+/* ---------- Connection Workflow ---------- */
+$('startLaptop').onclick = () => startAsLaptop();
+
+function startAsLaptop(){
+  role = 'laptop';
+  roomCode = generateRoomCode();
+  
+  $('step1').classList.add('completed');
+  $('step2').classList.remove('hidden');
+  $('step2').classList.add('active');
+  $('startLaptop').disabled = true;
+  $('startLaptop').textContent = '✓ Laptop Ready';
+  
+  const connectUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+  generateQR(connectUrl);
+  $('roomDisplay').textContent = roomCode;
+  
+  initPeerAsHost();
+  
+  let seconds = 0;
+  waitInterval = setInterval(() => {
+    seconds++;
+    $('waitTimer').textContent = seconds + 's';
+  }, 1000);
+  
+  showToast('QR code ready! Scan with your phone');
+}
+
+function generateRoomCode(){
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+function generateQR(text){
+  $('qrcode').innerHTML = '';
+  new QRCode($('qrcode'), {
+    text: text,
+    width: 240,
+    height: 240,
+    colorDark: "#000000",
+    colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.H
+  });
+}
+
+/* ---------- PeerJS Connection ---------- */
+function initPeerAsHost(){
+  const peerId = 'html-editor-' + roomCode + '-host';
+  peer = new Peer(peerId, { debug: 1 });
+  
+  peer.on('open', id => {
+    console.log('Laptop ready. Room:', roomCode);
+    updateStatus('waiting', 'Waiting for phone...');
+  });
+  
+  peer.on('connection', c => attachConnection(c));
+  
+  peer.on('error', err => {
+    console.error('Peer error:', err);
+    if(err.type === 'unavailable-id'){
+      log('Room already in use. Try refreshing.', 'err');
+    }
+  });
+}
+
+function attachConnection(c){
+  conn = c;
+  
+  conn.on('open', () => {
+    if(waitInterval) clearInterval(waitInterval);
+    
+    setTimeout(() => {
+      $('setup').classList.add('hidden');
+      $('mainUI').classList.remove('hidden');
+      $('sendToPhoneBtn').disabled = false;
+    }, 400);
+    
+    updateStatus('connected', 'Connected to phone');
+    showToast('Connected! Edit your HTML and send to phone.');
+    beep(880, 60);
+  });
+  
+  conn.on('data', data => {
+    // The laptop shouldn't receive HTML content, but handle pings.
+    if (data.type === 'ping') {
+      // Respond to keep connection alive
+      try { conn.send({ type: 'pong', t: Date.now() }); } catch(e){}
+    }
+  });
+  
+  conn.on('close', () => {
+    handleDisconnection();
+  });
+  
+  conn.on('error', err => {
+    console.error('Connection error:', err);
+    handleDisconnection();
+  });
+}
+
+function handleDisconnection() {
+  updateStatus('disconnected', 'Disconnected');
+  console.log('Connection closed');
+  conn = null;
+  $('sendToPhoneBtn').disabled = true;
+  // Do not auto-reconnect on laptop. User must restart.
+}
+
+/* ---------- Mobile Receiver Logic ---------- */
+if (isMobile) {
+  const urlParams = new URLSearchParams(window.location.search);
+  const qrRoom = urlParams.get('room');
+  
+  if(qrRoom){
+    roomCode = qrRoom;
+    initPeerAsGuest();
+  }
+
+  function initPeerAsGuest(){
+    const peerId = 'html-editor-' + roomCode + '-guest-' + Date.now();
+    const hostId = 'html-editor-' + roomCode + '-host';
+    
+    peer = new Peer(peerId, { debug: 1 });
+    
+    peer.on('open', id => {
+      console.log('Connecting to laptop...');
+      const c = peer.connect(hostId, { reliable: true });
+      attachGuestConnection(c);
+    });
+    
+    peer.on('error', err => {
+      console.error('Peer error:', err);
+      if(err.type === 'peer-unavailable'){
+        alert('Could not connect to laptop. Please ensure the laptop is ready and the room code is correct.');
+      }
+    });
+  }
+
+  function attachGuestConnection(c){
+    conn = c;
+    
+    conn.on('open', () => {
+      console.log('Connected to laptop!');
+      // Show a simple receiver UI
+      document.body.innerHTML = `
+        <div style="padding: 20px; font-family: sans-serif; background: #f0f0f0; height: 100vh;">
+          <h2 style="text-align: center; margin-bottom: 20px;">📱 Phone Preview</h2>
+          <iframe id="phonePreview" style="width: 100%; height: calc(100vh - 100px); border: 1px solid #ccc;"></iframe>
+        </div>
+      `;
+    });
+    
+    conn.on('data', data => {
+      if (data.type === 'html_content') {
+        const iframe = document.getElementById('phonePreview');
+        if (iframe) {
+          const blob = new Blob([data.content], {type: 'text/html'});
+          iframe.src = URL.createObjectURL(blob);
+          console.log('Received HTML content from laptop');
+        }
+      }
+      if (data.type === 'ping') {
+        try { conn.send({ type: 'pong', t: Date.now() }); } catch(e){}
+      }
+    });
+    
+    conn.on('close', () => {
+      console.log('Connection to laptop closed');
+      if (document.getElementById('phonePreview')) {
+        document.getElementById('phonePreview').src = 'about:blank';
+      }
+    });
+  }
+}
+
+/* ---------- UI Helpers ---------- */
+function updateStatus(state, text){
+  const banner = $('statusBanner');
+  const dot = $('statusDot');
+  const statusText = $('statusText');
+  
+  banner.className = 'status-banner ' + state;
+  banner.classList.remove('hidden');
+  
+  if(state === 'connected'){
+    $('bannerIcon').textContent = '✓';
+    $('bannerText').textContent = text;
+    dot.classList.add('ok');
+    statusText.textContent = 'connected';
+    statusText.classList.add('ok');
+  } else if(state === 'waiting'){
+    $('bannerIcon').textContent = '⏳';
+    $('bannerText').textContent = text;
+    dot.classList.remove('ok');
+    statusText.textContent = 'waiting';
+    statusText.classList.remove('ok');
+  } else {
+    $('bannerIcon').textContent = '❌';
+    $('bannerText').textContent = text;
+    dot.classList.remove('ok');
+    statusText.textContent = 'offline';
+    statusText.classList.remove('ok');
+  }
+}
+
+function showToast(msg, isError=false){
+  const toast = $('toast');
+  toast.textContent = msg;
+  toast.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+function beep(freq=660, ms=40){
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = freq;
+    o.type = 'sine';
+    g.gain.value = 0.05;
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    setTimeout(() => { o.stop(); ctx.close(); }, ms);
+  } catch(e){}
+}
+
+/* ---------- Keep connection alive ---------- */
+setInterval(() => {
+  if(conn && conn.open){
+    try { conn.send({ type: 'ping', t: Date.now() }); } catch(e){}
+  }
+}, 25000);
+</script>
+</body>
+</html>
